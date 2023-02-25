@@ -5,20 +5,11 @@ import (
     "fmt"
     "gorm.io/gorm"
     "math"
-    "reflect"
 )
 
 const (
     defaultNewTreeId = -1
 )
-
-func (db *Tree) GetTableName(n interface{}) string {
-    t := reflect.TypeOf(n)
-    if t.Kind() == reflect.Ptr {
-        t = t.Elem()
-    }
-    return db.NamingStrategy.TableName(t.Name())
-}
 
 func (db *Tree) MoveNode(n, targetPtr interface{}, position PositionEnum) (bool, error) {
     var err error

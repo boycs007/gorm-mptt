@@ -77,6 +77,7 @@ func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshT
         parent = existCtx.ModelBase
         edge = parent.Rght
         base.Lvl = parent.Lvl + 1
+        base.ParentID = parent.ID
         if refreshToPtr {
             parent.Rght = parent.Rght + 2
         }
@@ -84,6 +85,7 @@ func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshT
         parent = existCtx.ModelBase
         edge = parent.Lft + 1
         base.Lvl = parent.Lvl + 1
+        base.ParentID = parent.ID
         if refreshToPtr {
             parent.Rght = parent.Rght + 2
         }
@@ -91,6 +93,7 @@ func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshT
         sibling := existCtx.ModelBase
         edge = sibling.Lft
         base.Lvl = sibling.Lvl
+        base.ParentID = sibling.ParentID
         if refreshToPtr {
             sibling.Lft = sibling.Lft + 2
             sibling.Rght = sibling.Rght + 2
@@ -99,6 +102,7 @@ func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshT
         sibling := existCtx.ModelBase
         edge = sibling.Rght + 1
         base.Lvl = sibling.Lvl
+        base.ParentID = sibling.ParentID
     default:
         return UnsupportedPositionError
     }

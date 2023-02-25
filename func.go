@@ -6,6 +6,14 @@ import (
     "gorm.io/gorm"
 )
 
+func (db *Tree) GetTableName(n interface{}) string {
+    t := reflect.TypeOf(n)
+    if t.Kind() == reflect.Ptr {
+        t = t.Elem()
+    }
+    return db.NamingStrategy.TableName(t.Name())
+}
+
 func (db *Tree) validateType(n interface{}) error {
     kind := reflect.TypeOf(n).Kind()
     if kind != reflect.Ptr {
