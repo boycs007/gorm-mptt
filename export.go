@@ -63,6 +63,7 @@ type TreeManager interface {
     PartialRebuild(treeID int) error
 
     Node(node interface{}) TreeManager
+    RefreshNode(node interface{}) error
 
     // the interface below should call Node first
 

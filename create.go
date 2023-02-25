@@ -12,7 +12,7 @@ func (db *Tree) CreateNode(n interface{}) error {
 
     if parentId == 0 {
         // new tree root node
-        base.TreeID = db.getNextTreeId(ctx)
+        base.TreeID = db.getNextTreeId(ctx.Node)
         base.Lft = 1
         base.Rght = 2
         base.Lvl = 1
@@ -44,7 +44,7 @@ func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshT
     if err := db.validateType(toPtr); err != nil {
         return err
     }
-
+    base = db.getContext(n).ModelBase
     existCtx := db.getContext(toPtr)
     base.TreeID = existCtx.ModelBase.TreeID
 

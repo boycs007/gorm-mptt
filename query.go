@@ -5,6 +5,13 @@ import (
     "math"
 )
 
+// RefreshNode 刷新节点信息，在Insert， Move， Delete操作之后，
+// 有可能导致某个节点的信息已发生变化，需要通过id get到节点来刷新位置信息
+func (db *Tree) RefreshNode(n interface{}) error {
+    base := db.getContext(n).ModelBase
+    return db.Statement.DB.Table(db.GetTableName(n)).Where("id = ?", base.ID).Find(n).Error
+}
+
 func (db *Tree) GetDescendantCount() int {
     base := db.Context.ModelBase
     return int(math.Floor(float64(base.Rght-base.Lft-1) / 2))

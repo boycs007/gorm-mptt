@@ -3,9 +3,11 @@ package tests
 import (
     "fmt"
     mptt "github.com/boycs007/gorm-mptt"
+    . "github.com/smartystreets/goconvey/convey"
     "github.com/stretchr/testify/assert"
     "gorm.io/driver/sqlite"
     "gorm.io/gorm"
+    "gorm.io/gorm/logger"
     "gorm.io/gorm/schema"
     "os"
     "testing"
@@ -31,6 +33,7 @@ func GormInitWithSqlite(tmpDBPath string) {
             NamingStrategy: schema.NamingStrategy{
                 SingularTable: true, // 设置单数表名
             },
+            Logger: logger.Default.LogMode(logger.Info),
         })
 
     if err != nil {
@@ -68,10 +71,51 @@ func init() {
     RunMigrations(new(CustomTree))
 }
 
-func Test_CreateNodes(t *testing.T) {
+func Test_MutilTrees(t *testing.T) {
     manager := mptt.NewManager(globalDb)
-    err := manager.CreateNode(&CustomTree{
-        Name: "RootNode",
+    Convey("create root nodes", t, func() {
+
+        roots := make([]*CustomTree, 0)
+        for i := range make([]struct{}, 20) {
+            node := &CustomTree{
+                Name: fmt.Sprintf("RootNode%d", i),
+            }
+            err := manager.CreateNode(node)
+            assert.Nil(t, err, "Create Node failed: %s", err)
+            assert.Equal(t, node.TreeID, i+1)
+            assert.Equal(t, node.Lft, 1)
+            assert.Equal(t, node.Rght, 2)
+            assert.Equal(t, node.Lvl, 1)
+            roots = append(roots, node)
+        }
+        Convey("create last child", func() {
+
+            depts := make([]*CustomTree, 0)
+
+            for j := range make([]struct{}, 10) {
+                subNode := &CustomTree{
+                    Name: fmt.Sprintf("DeptNode%d", j),
+                }
+                err := manager.InsertNode(subNode, roots[4], mptt.LastChild, true)
+                assert.Nil(t, err, "Insert Node failed: %s", err)
+                assert.Equal(t, roots[4].Rght, 2+2*(j+1))
+                assert.Equal(t, subNode.TreeID, roots[4].TreeID)
+                assert.Equal(t, subNode.Lft, roots[4].Lft+(j*2)+1)
+
+                depts = append(depts, subNode)
+            }
+
+            Convey("delete node", func() {
+                err := manager.DeleteNode(roots[5])
+                assert.Nil(t, err, "Delete Node failed: %s", err)
+                err = manager.RefreshNode(roots[7])
+                assert.Nil(t, err, "GetNode Node failed: %s", err)
+                assert.Equal(t, 7, roots[7].TreeID)
+                outPtr := &CustomTree{}
+                err = manager.Node(roots[7]).GetRoot(outPtr)
+                assert.Nil(t, err, "GetRoot Node failed: %s", err)
+                assert.Equal(t, 8, outPtr.ID)
+            })
+        })
     })
-    assert.Nil(t, err, "Create Node failed: %s", err)
 }
