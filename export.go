@@ -53,7 +53,6 @@ func NewManager(db *gorm.DB) TreeManager {
 
 // TreeManager ...
 type TreeManager interface {
-    // CreateNode TODO delete
     CreateNode(node interface{}) error
     InsertNode(node, target interface{}, position PositionEnum, refreshTarget bool) error
     MoveNode(node, target interface{}, position PositionEnum) (bool, error)
@@ -62,8 +61,8 @@ type TreeManager interface {
     Rebuild() error
     PartialRebuild(treeID int) error
 
-    Node(node interface{}) TreeManager
     RefreshNode(node interface{}) error
+    Node(node interface{}) TreeManager
 
     // the interface below should call Node first
 

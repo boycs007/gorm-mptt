@@ -144,19 +144,22 @@ func Test_MutilTrees(t *testing.T) {
                 }, depts[2], mptt.Left, true)
                 assert.Nil(t, err, "Insert Node failed: %s", err)
 
+                Convey("delete node", func() {
+                    err := manager.DeleteNode(roots[5])
+                    assert.Nil(t, err, "Delete Node failed: %s", err)
+                    err = manager.RefreshNode(roots[7])
+                    assert.Nil(t, err, "GetNode Node failed: %s", err)
+                    assert.Equal(t, 8, roots[7].TreeID)
+                    outPtr := &CustomTree{}
+                    err = manager.Node(roots[7]).GetRoot(outPtr)
+                    assert.Nil(t, err, "GetRoot Node failed: %s", err)
+                    assert.Equal(t, 8, outPtr.ID)
+
+                    err = manager.DeleteNode(depts[1])
+                    assert.Nil(t, err, "GetRoot Node failed: %s", err)
+                })
             })
 
-            //Convey("delete node", func() {
-            //    err := manager.DeleteNode(roots[5])
-            //    assert.Nil(t, err, "Delete Node failed: %s", err)
-            //    err = manager.RefreshNode(roots[7])
-            //    assert.Nil(t, err, "GetNode Node failed: %s", err)
-            //    assert.Equal(t, 7, roots[7].TreeID)
-            //    outPtr := &CustomTree{}
-            //    err = manager.Node(roots[7]).GetRoot(outPtr)
-            //    assert.Nil(t, err, "GetRoot Node failed: %s", err)
-            //    assert.Equal(t, 8, outPtr.ID)
-            //})
         })
     })
 }
