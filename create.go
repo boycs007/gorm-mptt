@@ -2,25 +2,25 @@ package mptt
 
 // CreateNode 插入新节点。当节点的ParentID为0时，将生成新的树的根节点；
 // 当节点的ParentID不为0时，将新节点插入为Parent的最后一个子节点
-func (db *Tree) CreateNode(n interface{}) error {
-    if err := db.validateType(n); err != nil {
-        return err
-    }
-    ctx := db.getContext(n)
-    base := ctx.ModelBase
-    parentId := base.ParentID
-
-    if parentId == 0 {
-        // new tree root node
-        base.TreeID = db.getNextTreeId(ctx.Node)
-        base.Lft = 1
-        base.Rght = 2
-        base.Lvl = 1
-        db.setModelBase(n, base)
-        return db.Statement.Create(n).Error
-    }
-    parent := db.getNodeByParentId(ctx)
-    return db.InsertNode(n, &parent, LastChild, false)
+func (t *tree) CreateNode(n interface{}) error {
+	var err error
+	if err = t.validateType(n); err != nil {
+		return err
+	}
+	parentID := t.getParentID(n)
+	if isEmpty(parentID) {
+		// new tree root node
+		t.setTreeID(n, t.getNextTreeId())
+		t.setLeft(n, 1)
+		t.setRight(n, 2)
+		t.setLevel(n, 1)
+		return t.Statement.Create(n).Error
+	}
+	parent, err := t.getNodeByID(parentID)
+	if err != nil {
+		return err
+	}
+	return t.InsertNode(n, parent, LastChild)
 }
 
 // InsertNode 插入新节点
@@ -28,98 +28,92 @@ func (db *Tree) CreateNode(n interface{}) error {
 // @param n: 需要插入的节点
 // @param toPtr: 需要插入到哪里，toPtr为已存在的某个节点
 // @param position:  需要插入到相对于toPtr的某个位置，可以是其
-//   LastChild: 作为toPtr的最后一个子节点
-//   FirstChild: 作为toPtr的第一个子节点
-//   Left: 插入到toPtr的左边(前面)
-//   Right: 插入到toPtr的右边(后面)
+//
+//	LastChild: 作为toPtr的最后一个子节点
+//	FirstChild: 作为toPtr的第一个子节点
+//	Left: 插入到toPtr的左边(前面)
+//	Right: 插入到toPtr的右边(后面)
+//
 // @param refreshToPtr: 是否需要将toPtr对象的信息进行更新，例如如果插入到toPtr的左侧后，toPtr的lft、rght值将会更新
-func (db *Tree) InsertNode(n, toPtr interface{}, position PositionEnum, refreshToPtr bool) error {
-    var (
-        edge         int
-        parent, base *MPTTModelBase
-    )
-    if err := db.validateType(n); err != nil {
-        return err
-    }
-    if err := db.validateType(toPtr); err != nil {
-        return err
-    }
-    base = db.getContext(n).ModelBase
-    existCtx := db.getContext(toPtr)
-    base.TreeID = existCtx.ModelBase.TreeID
+func (t *tree) InsertNode(n, toPtr interface{}, position PositionEnum) error {
+	var (
+		err  error
+		edge int
+	)
+	if err = t.validateType(n); err != nil {
+		return err
+	}
+	if err = t.validateType(toPtr); err != nil {
+		return err
+	}
+	var (
+		existLvl      = t.getLevel(toPtr)
+		existLeft     = t.getLeft(toPtr)
+		existRight    = t.getRight(toPtr)
+		existID       = t.getNodeID(toPtr)
+		existParentID = t.getParentID(toPtr)
+		existTreeID   = t.getTreeID(toPtr)
+	)
+	// 根节点插入
+	if isEmpty(existParentID) && (position == Left || position == Right) {
+		var spaceTarget int
+		if position == Left {
+			t.setTreeID(n, existTreeID)
+			spaceTarget = existTreeID - 1
+			t.setTreeID(toPtr, existTreeID+1)
+		} else {
+			t.setTreeID(n, existTreeID+1)
+			spaceTarget = existTreeID
+		}
+		t.setLeft(n, 1)
+		t.setRight(n, 2)
+		t.setLevel(n, 1)
+		if err = t.createTreeSpace(n, spaceTarget, 1); err != nil {
+			return err
+		}
+		return t.Statement.Create(n).Error
+	}
 
-    // 根节点插入
-    if existCtx.ModelBase.ParentID == 0 && (position == Left || position == Right) {
-        var spaceTarget int
-        if position == Left {
-            base.TreeID = existCtx.ModelBase.TreeID
-            spaceTarget = existCtx.ModelBase.TreeID - 1
-            existCtx.ModelBase.TreeID = existCtx.ModelBase.TreeID + 1
-        } else {
-            base.TreeID = existCtx.ModelBase.TreeID + 1
-            spaceTarget = existCtx.ModelBase.TreeID
-        }
-        base.Lft = 1
-        base.Rght = 2
-        base.Lvl = 1
-        if err := db.createTreeSpace(n, spaceTarget, 1); err != nil {
-            return err
-        }
-        db.setModelBase(n, base)
-        if refreshToPtr {
-            db.setModelBase(toPtr, existCtx.ModelBase)
-        }
-        return db.Statement.Create(n).Error
-    }
+	switch position {
+	case LastChild:
+		// toPtr is node's parent
+		edge = existRight
+		t.setLevel(n, existLvl+1)
+		t.setParentID(n, existID)
+		// refresh father
+		t.setRight(toPtr, existRight+2)
+	case FirstChild:
+		// toPtr is node's parent
+		edge = existLeft + 1
+		t.setLevel(n, existLvl+1)
+		t.setParentID(n, existID)
+		// refresh father
+		t.setRight(toPtr, existRight+2)
+	case Left:
+		// toPtr is node's first sibling
+		edge = existLeft
+		t.setLevel(n, existLvl)
+		t.setParentID(n, existParentID)
+		// refresh exist node
+		t.setLeft(toPtr, existLeft+2)
+		t.setRight(toPtr, existRight+2)
+	case Right:
+		edge = existRight + 1
+		t.setLevel(n, existLvl)
+		t.setParentID(n, existParentID)
+	default:
+		return UnsupportedPositionError
+	}
 
-    switch position {
-    case LastChild:
-        parent = existCtx.ModelBase
-        edge = parent.Rght
-        base.Lvl = parent.Lvl + 1
-        base.ParentID = parent.ID
-        if refreshToPtr {
-            parent.Rght = parent.Rght + 2
-        }
-    case FirstChild:
-        parent = existCtx.ModelBase
-        edge = parent.Lft + 1
-        base.Lvl = parent.Lvl + 1
-        base.ParentID = parent.ID
-        if refreshToPtr {
-            parent.Rght = parent.Rght + 2
-        }
-    case Left:
-        sibling := existCtx.ModelBase
-        edge = sibling.Lft
-        base.Lvl = sibling.Lvl
-        base.ParentID = sibling.ParentID
-        if refreshToPtr {
-            sibling.Lft = sibling.Lft + 2
-            sibling.Rght = sibling.Rght + 2
-        }
-    case Right:
-        sibling := existCtx.ModelBase
-        edge = sibling.Rght + 1
-        base.Lvl = sibling.Lvl
-        base.ParentID = sibling.ParentID
-    default:
-        return UnsupportedPositionError
-    }
+	t.setLeft(n, edge)
+	t.setRight(n, edge+1)
+	spaceTarget := edge - 1
 
-    base.Lft = edge
-    base.Rght = edge + 1
-    spaceTarget := base.Lft - 1
+	t.setTreeID(n, existTreeID)
 
-    base.TreeID = existCtx.ModelBase.TreeID
-
-    err := db.createSpace(n, 2, spaceTarget, base.TreeID)
-    if err != nil {
-        return err
-    }
-    db.setModelBase(n, base)
-    if refreshToPtr {
-        db.setModelBase(toPtr, existCtx.ModelBase)
-    }
-    return db.Statement.Create(n).Error
+	err = t.createSpace(2, spaceTarget, existTreeID)
+	if err != nil {
+		return err
+	}
+	return t.Statement.Create(n).Error
 }

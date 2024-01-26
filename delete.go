@@ -1,31 +1,58 @@
 package mptt
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+)
+
+func (t *tree) DeleteNodeByID(nodeID interface{}) error {
+	// 查询一下确保数据是准的
+	node := reflectNew(t.node)
+	t.setNodeID(node, nodeID)
+	err := t.Model(node).First(node).Error
+	if err != nil {
+		return err
+	}
+	return t.DeleteNode(node, true)
+}
 
 // DeleteNode delete current node and all descendants
-func (db *Tree) DeleteNode(n interface{}) error {
-    var err error
-    if err = db.validateType(n); err != nil {
-        return err
-    }
-    ctx := db.getContext(n)
-    realNode := db.getNodeById(ctx)
-    if realNode.ID == 0 {
-        return NodeNotExistsError
-    }
-    diff := realNode.Rght - realNode.Lft + 1
+func (t *tree) DeleteNode(n interface{}, doNotRefresh ...bool) error {
+	var (
+		err      error
+		realNode = n
+	)
+	if len(doNotRefresh) == 0 || !doNotRefresh[0] {
+		if err = t.validateType(n); err != nil {
+			return err
+		}
+		realNode, err = t.getNodeByID(t.getNodeID(n))
+		if err != nil {
+			return err
+		}
+	}
 
-    err = db.Statement.DB.Table(db.GetTableName(n)).
-        Where("tree_id = ? AND lft >= ? AND lft < ?", realNode.TreeID, realNode.Lft, realNode.Rght).
-        Delete(map[string]interface{}{}).Error
-    if err != nil {
-        return err
-    }
-    if realNode.ParentID == 0 {
-        // delete the whole tree, close the tree id gap.
-        return db.Statement.DB.Table(db.GetTableName(n)).
-            Where("tree_id > ?", realNode.TreeID).
-            Update("tree_id", gorm.Expr("tree_id - ?", 1)).Error
-    }
-    return db.closeGap(n, diff, realNode.Rght, realNode.TreeID)
+	var (
+		right      = t.getRight(realNode)
+		left       = t.getLeft(realNode)
+		parentID   = t.getParentID(realNode)
+		treeID     = t.getTreeID(realNode)
+		treeDbName = t.colTree()
+	)
+	diff := right - left + 1
+	whereSql := t.replacePlaceholder("[tree_id] = ? AND [left] >= ? AND [left] < ?")
+	emptyNode := reflectNew(realNode)
+	err = t.Model(emptyNode).
+		Where(whereSql,
+			treeID, left, right).
+		Delete(map[string]interface{}{}).Error
+	if err != nil {
+		return err
+	}
+	if isEmpty(parentID) {
+		// delete the whole tree, close the tree id gap.
+		return t.Model(emptyNode).
+			Where(treeDbName+" > ?", treeID).
+			Update(t.colTree(true), gorm.Expr(treeDbName+" - 1")).Error
+	}
+	return t.closeGap(diff, right, treeID)
 }

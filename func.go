@@ -1,111 +1,154 @@
 package mptt
 
 import (
-    "reflect"
+	"strings"
 
-    "gorm.io/gorm"
+	"gorm.io/gorm"
 )
 
-func (db *Tree) GetTableName(n interface{}) string {
-    t := reflect.TypeOf(n)
-    if t.Kind() == reflect.Ptr {
-        t = t.Elem()
-    }
-    return db.NamingStrategy.TableName(t.Name())
+// MPTT Table consts
+const (
+	TableName          = "[table_tree]"
+	ColumnIDAttr       = "[id]"
+	ColumnParentIDAttr = "[parent_id]"
+	ColumnTreeIDAttr   = "[tree_id]"
+	ColumnLeftAttr     = "[left]"
+	ColumnRightAttr    = "[right]"
+	ColumnLevelAttr    = "[level]"
+
+	DefaultIDColumn       = "ID"
+	DefaultParentIDColumn = "ParentID"
+	DefaultTreeIDColumn   = "TreeID"
+	DefaultLeftColumn     = "Lft"
+	DefaultRightColumn    = "Rght"
+	DefaultLevelColumn    = "Lvl"
+)
+
+// replacePlaceholder ... 占位符替换为具体的值
+func (t *tree) replacePlaceholder(rawSql string) string {
+
+	replacer := strings.NewReplacer(
+		TableName, t.getTableName(),
+		ColumnIDAttr, t.colID(),
+		ColumnParentIDAttr, t.colParent(),
+		ColumnTreeIDAttr, t.colTree(),
+		ColumnLeftAttr, t.colLeft(),
+		ColumnRightAttr, t.colRight(),
+		ColumnLevelAttr, t.colLevel(),
+	)
+	return replacer.Replace(rawSql)
 }
 
-func (db *Tree) validateType(n interface{}) error {
-    kind := reflect.TypeOf(n).Kind()
-    if kind != reflect.Ptr {
-        return ModelTypeError
-    }
-    return nil
+func (t *tree) colID(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.ID.DBName
+	}
+	return t.Statement.Quote(t.fields.ID.DBName)
 }
 
-func (db *Tree) getContext(nodePtr interface{}) TreeContext {
-    mb := db.getModelBase(nodePtr)
-    ctx := TreeContext{
-        nodePtr,
-        &mb,
-    }
-    return ctx
+func (t *tree) colParent(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.Parent.DBName
+	}
+	return t.Statement.Quote(t.fields.Parent.DBName)
 }
 
-func (db *Tree) getModelBase(n interface{}) MPTTModelBase {
-    kind := reflect.TypeOf(n).Kind()
-    rv := reflect.ValueOf(n)
-    if kind == reflect.Ptr {
-        rv = rv.Elem()
-    }
-    return rv.FieldByName("MPTTModelBase").Interface().(MPTTModelBase)
+func (t *tree) colTree(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.Tree.DBName
+	}
+	return t.Statement.Quote(t.fields.Tree.DBName)
 }
 
-func (db *Tree) setModelBase(n interface{}, base *MPTTModelBase) {
-    v := reflect.ValueOf(n).Elem()
-    v.FieldByName("MPTTModelBase").Set(reflect.ValueOf(base).Elem())
+func (t *tree) colLeft(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.Left.DBName
+	}
+	return t.Statement.Quote(t.fields.Left.DBName)
 }
 
-func (db *Tree) getNodeById(ctx TreeContext) *MPTTModelBase {
-    base := ctx.ModelBase
-    result := &MPTTModelBase{}
-    db.Statement.DB.Model(ctx.Node).Where("id = ?", base.ID).First(result)
-    return result
-
-}
-func (db *Tree) getNodeByParentId(ctx TreeContext) *MPTTModelBase {
-    base := ctx.ModelBase
-    result := &MPTTModelBase{}
-    db.Statement.DB.Model(ctx.Node).Where("id = ?", base.ParentID).First(result)
-    return result
+func (t *tree) colRight(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.Right.DBName
+	}
+	return t.Statement.Quote(t.fields.Right.DBName)
 }
 
-func (db *Tree) getTreeId(ctx TreeContext) int {
-    base := ctx.ModelBase
-    if base.ParentID == 0 {
-        return db.getNextTreeId(ctx.Node)
-    }
-    pb := db.getNodeByParentId(ctx)
-    return pb.TreeID
+func (t *tree) colLevel(withoutQuote ...bool) string {
+	if len(withoutQuote) > 0 && withoutQuote[0] {
+		return t.fields.Level.DBName
+	}
+	return t.Statement.Quote(t.fields.Level.DBName)
 }
 
-func (db *Tree) getNextTreeId(nPtr interface{}) int {
-    var treeId int
-    db.Statement.Select("tree_id").
-        Model(nPtr).Order("tree_id desc").Limit(1).Scan(&treeId)
-    return treeId + 1
+func (t *tree) getNodeID(n interface{}) interface{} {
+	return getFieldValue(n, t.fields.ID)
 }
 
-func (db *Tree) getMax(ctx TreeContext) int {
-    var rght int
-    db.Statement.Select("rght").Model(ctx.Node).
-        Where("tree_id = ?", ctx.ModelBase.TreeID).Order("rght desc").Limit(1).Scan(&rght)
-    return rght
+func (t *tree) getParentID(n interface{}) interface{} {
+	return getFieldValue(n, t.fields.Parent)
 }
 
-func (db *Tree) getLftFromTargetNode(ctx TreeContext, pos int) int {
-    var lft int
-    db.Statement.DB.Model(ctx.Node).Select("lft").
-        Where("parent_id = ?", ctx.ModelBase.ParentID).
-        Where("rght < ?", ctx.ModelBase.Lft).
-        Order("lft desc").
-        Limit(1).
-        Offset(pos - 1).Scan(&lft)
-    return lft
+func (t *tree) getLeft(n interface{}) int {
+	return getIntFieldValue(n, t.fields.Left)
 }
 
-func (db *Tree) getRghtFromTargetNode(ctx TreeContext, pos int) int {
-    var rght int
-    db.Statement.DB.Model(ctx.Node).Select("rght").
-        Where("parent_id = ?", ctx.ModelBase.ParentID).
-        Where("lft > ?", ctx.ModelBase.Rght).
-        Order("lft asc").
-        Limit(1).
-        Offset(pos - 1).Scan(&rght)
-    return rght
+func (t *tree) getRight(n interface{}) int {
+	return getIntFieldValue(n, t.fields.Right)
 }
 
-func (db *Tree) createTreeSpace(model interface{}, targetTreeId, num int) error {
-    return db.Statement.DB.Model(model).
-        Where("tree_id > ?", targetTreeId).
-        Update("tree_id", gorm.Expr("tree_id + ?", num)).Error
+func (t *tree) getLevel(n interface{}) int {
+	return getIntFieldValue(n, t.fields.Level)
+}
+
+func (t *tree) getTreeID(n interface{}) int {
+	return getIntFieldValue(n, t.fields.Tree)
+}
+
+func (t *tree) setNodeID(n interface{}, value interface{}) {
+	setFieldValue(n, t.fields.ID, value)
+}
+
+func (t *tree) setParentID(n interface{}, value interface{}) {
+	setFieldValue(n, t.fields.Parent, value)
+}
+
+func (t *tree) setLeft(n interface{}, left int) {
+	setFieldValue(n, t.fields.Left, left)
+}
+
+func (t *tree) setRight(n interface{}, right int) {
+	setFieldValue(n, t.fields.Right, right)
+}
+
+func (t *tree) setLevel(n interface{}, level int) {
+	setFieldValue(n, t.fields.Level, level)
+}
+
+func (t *tree) setTreeID(n interface{}, treeID int) {
+	setFieldValue(n, t.fields.Tree, treeID)
+}
+
+func (t *tree) getNodeByID(id interface{}) (interface{}, error) {
+	node := reflectNew(t.node)
+	t.setNodeID(node, id)
+	err := t.Model(node).First(node).Error
+	return node, err
+}
+
+func (t *tree) getNextTreeId() int {
+	var (
+		treeId       int
+		node         = reflectNew(t.node)
+		treeIdDbName = t.colTree()
+	)
+	t.Statement.Select(treeIdDbName).
+		Model(node).Order(treeIdDbName + " DESC").Limit(1).Scan(&treeId)
+	return treeId + 1
+}
+
+func (t *tree) createTreeSpace(model interface{}, targetTreeId, num int) error {
+	return t.Model(reflectNew(model)).
+		Where(t.colTree()+" > ?", targetTreeId).
+		Update(t.colTree(true), gorm.Expr(t.colTree()+" + ?", num)).Error
 }
