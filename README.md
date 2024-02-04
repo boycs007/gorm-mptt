@@ -124,6 +124,19 @@ IsDescendant := manager.Node(node).IsDescendantOf(target, includeSelf)
 ```
 
 
+### Rebuild方法
+
+使用场景：
+1. 当有节点不是通过`TreeManager`中的方法创建，需要修正树中节点的MPTT信息；
+2. 当并发处理导致树上的MPTT信息错乱时；
+3. 其他任何导致树上MPTT信息不准确，需要修正这些数据时
+
+都可以调用`Rebuild`来修正整个森林，`PartialRebuild`修正特定的树：
+```go
+err = manager.Rebuild()
+err = manager.PartialRebuild(treeID)
+```
+
 ### 备注
 
 设计上，为了保证已有的树结构，可以使用本库快速迁移到MPTT，`ID`、`ParentID`列支持除了数值和`string`类型，但当前只测试了内嵌`mptt.ModelBase`的`int`类型场景。
